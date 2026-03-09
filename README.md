@@ -33,6 +33,7 @@
 ### 功能截图
 <img src="https://picui.ogmua.cn/s1/2026/03/08/69ad4e2b4a55b.webp"  alt="图片失效"/>
 <img src="https://picui.ogmua.cn/s1/2026/03/08/69ad4e2b4b222.webp"  alt="图片失效"/>
+<img src="https://picui.ogmua.cn/s1/2026/03/09/69aecda38dabc.webp"  alt="图片失效"/>
 
 ### 多账号管理
 - 账号新增、编辑、删除、启动、停止

@@ -1,20 +1,67 @@
 <script setup lang="ts">
 import { useIntervalFn } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useAccountStore } from '@/stores/account'
 import { useBagStore } from '@/stores/bag'
 import { useStatusStore } from '@/stores/status'
+import { useToastStore } from '@/stores/toast'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 
 const accountStore = useAccountStore()
 const bagStore = useBagStore()
 const statusStore = useStatusStore()
+const toastStore = useToastStore()
 
 const { currentAccountId, currentAccount } = storeToRefs(accountStore)
-const { items, loading: bagLoading } = storeToRefs(bagStore)
+const { items, loading: bagLoading, originalItems } = storeToRefs(bagStore)
 const { status, loading: statusLoading, error: statusError, realtimeConnected } = storeToRefs(statusStore)
 
 const imageErrors = ref<Record<string | number, boolean>>({})
+
+const CATEGORY_OPTIONS = [
+  { label: '全部', value: 'all' },
+  { label: '果实', value: 'fruit' },
+  { label: '种子', value: 'seed' },
+  { label: '道具', value: 'tool' },
+  { label: '其他', value: 'other' },
+] as const
+
+type CategoryValue = typeof CATEGORY_OPTIONS[number]['value']
+
+const selectedCategory = ref<CategoryValue>('fruit')
+
+function getItemCategory(item: any): CategoryValue {
+  const itemType = Number(item?.itemType || 0)
+  if (itemType === 17 || itemType === 6) return 'fruit'
+  if (itemType === 5) return 'seed'
+  if (itemType === 11) return 'tool'
+  return 'other'
+}
+
+const filteredItems = computed(() => {
+  if (selectedCategory.value === 'all') return items.value
+  return items.value.filter((item: any) => getItemCategory(item) === selectedCategory.value)
+})
+
+const categoryCounts = computed(() => {
+  const counts: Record<CategoryValue, number> = { all: items.value.length, fruit: 0, seed: 0, tool: 0, other: 0 }
+  for (const item of items.value) {
+    const cat = getItemCategory(item)
+    counts[cat]++
+  }
+  return counts
+})
+
+const confirmModal = ref({
+  show: false,
+  title: '',
+  message: '',
+  type: 'primary' as 'primary' | 'danger',
+  loading: false,
+  action: '' as 'sell' | 'use',
+  item: null as any,
+})
 
 function getPriceClass(item: any) {
   const priceId = Number(item?.priceId || 0)
@@ -23,6 +70,84 @@ function getPriceClass(item: any) {
   if (priceId === 1002)
     return 'text-sky-400 dark:text-sky-300'
   return 'text-gray-400'
+}
+
+function canSell(item: any) {
+  const itemType = Number(item?.itemType || 0)
+  return itemType === 17 || itemType === 5 || itemType === 6
+}
+
+function canUse(item: any) {
+  const itemType = Number(item?.itemType || 0)
+  return itemType === 11
+}
+
+function handleSellClick(item: any) {
+  confirmModal.value = {
+    show: true,
+    title: '确认出售',
+    message: `确定要出售全部 ${item.name || `物品${item.id}`} 吗？\n数量：${item.count || 0}`,
+    type: 'danger',
+    loading: false,
+    action: 'sell',
+    item,
+  }
+}
+
+function handleUseClick(item: any) {
+  confirmModal.value = {
+    show: true,
+    title: '确认使用',
+    message: `确定要使用全部 ${item.name || `物品${item.id}`} 吗？\n数量：${item.count || 0}`,
+    type: 'primary',
+    loading: false,
+    action: 'use',
+    item,
+  }
+}
+
+async function handleConfirm() {
+  const { action, item } = confirmModal.value
+  if (!item || !currentAccountId.value) return
+
+  confirmModal.value.loading = true
+  try {
+    if (action === 'sell') {
+      const sellItems = originalItems.value
+        .filter((it: any) => Number(it.id) === Number(item.id))
+        .map((it: any) => ({ id: it.id, count: it.count, uid: it.uid || 0 }))
+      
+      if (sellItems.length === 0) {
+        toastStore.error('未找到可出售的物品')
+        return
+      }
+
+      const res = await bagStore.sellItems(currentAccountId.value, sellItems)
+      if (res.ok) {
+        toastStore.success(`已出售 ${item.name || `物品${item.id}`}`)
+        await loadBag()
+      } else {
+        toastStore.error(`出售失败: ${res.error || '未知错误'}`)
+      }
+    } else if (action === 'use') {
+      const res = await bagStore.useItem(currentAccountId.value, Number(item.id), Number(item.count || 1))
+      if (res.ok) {
+        toastStore.success(`已使用 ${item.name || `物品${item.id}`}`)
+        await loadBag()
+      } else {
+        toastStore.error(`使用失败: ${res.error || '未知错误'}`)
+      }
+    }
+  } catch (e: any) {
+    toastStore.error(`操作失败: ${e.message || '未知错误'}`)
+  } finally {
+    confirmModal.value.loading = false
+    confirmModal.value.show = false
+  }
+}
+
+function handleCancel() {
+  confirmModal.value.show = false
 }
 
 async function loadBag() {
@@ -98,14 +223,49 @@ useIntervalFn(loadBag, 60000)
       无可展示物品
     </div>
 
-    <div v-else class="grid grid-cols-2 gap-4 lg:grid-cols-5 md:grid-cols-4 sm:grid-cols-3 xl:grid-cols-6">
+    <div v-else>
+      <div class="mb-4 flex flex-wrap gap-2">
+        <button
+          v-for="cat in CATEGORY_OPTIONS"
+          :key="cat.value"
+          class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+          :class="selectedCategory === cat.value 
+            ? 'bg-blue-500 text-white dark:bg-blue-600' 
+            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
+          @click="selectedCategory = cat.value"
+        >
+          {{ cat.label }}
+          <span class="ml-1 text-xs opacity-70">({{ categoryCounts[cat.value] || 0 }})</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-5 md:grid-cols-4 sm:grid-cols-3 xl:grid-cols-6">
       <div
-          v-for="item in items"
+          v-for="item in filteredItems"
           :key="item.id"
           class="group relative flex flex-col items-center rounded-lg border bg-white p-3 transition hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
       >
         <div class="absolute left-2 top-2 font-mono text-xs text-gray-400">
           #{{ item.id }}
+        </div>
+
+        <div class="absolute right-1 top-1 flex gap-1">
+          <button
+            v-if="canSell(item)"
+            class="rounded bg-red-500 px-1.5 py-0.5 text-[10px] text-white opacity-70 transition hover:opacity-100 dark:bg-red-600"
+            title="出售全部"
+            @click.stop="handleSellClick(item)"
+          >
+            售
+          </button>
+          <button
+            v-if="canUse(item)"
+            class="rounded bg-green-500 px-1.5 py-0.5 text-[10px] text-white opacity-70 transition hover:opacity-100 dark:bg-green-600"
+            title="使用全部"
+            @click.stop="handleUseClick(item)"
+          >
+            用
+          </button>
         </div>
 
         <div
@@ -142,7 +302,19 @@ useIntervalFn(loadBag, 60000)
           {{ item.hoursText || `x${item.count || 0}` }}
         </div>
       </div>
+      </div>
     </div>
+
+    <ConfirmModal
+      :show="confirmModal.show"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :type="confirmModal.type"
+      :loading="confirmModal.loading"
+      :confirm-text="confirmModal.action === 'sell' ? '确认出售' : '确认使用'"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>
 

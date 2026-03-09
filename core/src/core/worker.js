@@ -14,7 +14,6 @@ const { getInteractRecords } = require('../services/interact');
 const { processInviteCodes } = require('../services/invite');
 const { autoBuyOrganicFertilizer, autoBuyFertilizer, buyFreeGifts, getFreeGiftDailyState } = require('../services/mall');
 const { performDailyMonthCardGift, getMonthCardDailyState } = require('../services/monthcard');
-const { performDailyOpenServerGift, getOpenServerDailyState } = require('../services/openserver');
 const { performDailyVipGift, getVipDailyState } = require('../services/qqvip');
 const { createScheduler, getSchedulerRegistrySnapshot } = require('../services/scheduler');
 const { performDailyShare, getShareDailyState } = require('../services/share');
@@ -135,7 +134,6 @@ async function runDailyRoutines(force = false) {
         await checkAndClaimEmails(force);
         await performDailyShare(force);
         await performDailyMonthCardGift(force);
-        await performDailyOpenServerGift(force);
         await buyFreeGifts(force);
         await performDailyVipGift(force);
     } catch (e) {
@@ -687,7 +685,6 @@ async function getDailyGiftOverview() {
     const share = getShareDailyState ? getShareDailyState() : { doneToday: false, lastClaimAt: 0 };
     const vip = getVipDailyState ? getVipDailyState() : { doneToday: false, lastClaimAt: 0 };
     const month = getMonthCardDailyState ? getMonthCardDailyState() : { doneToday: false, lastClaimAt: 0 };
-    const openServer = getOpenServerDailyState ? getOpenServerDailyState() : { doneToday: false, lastClaimAt: 0, lastCheckAt: 0 };
 
     return {
         date: new Date().toISOString().slice(0, 10),
@@ -732,15 +729,6 @@ async function getDailyGiftOverview() {
                 hasCard: Object.prototype.hasOwnProperty.call(month, 'hasCard') ? !!month.hasCard : undefined,
                 hasClaimable: Object.prototype.hasOwnProperty.call(month, 'hasClaimable') ? !!month.hasClaimable : undefined,
                 result: month.result || '',
-            },
-            {
-                key: 'open_server_gift',
-                label: '开服红包',
-                enabled: true,
-                doneToday: !!openServer.doneToday,
-                lastAt: Number(openServer.lastClaimAt || openServer.lastCheckAt || 0),
-                hasClaimable: Object.prototype.hasOwnProperty.call(openServer, 'hasClaimable') ? !!openServer.hasClaimable : undefined,
-                result: openServer.result || '',
             },
         ],
     };

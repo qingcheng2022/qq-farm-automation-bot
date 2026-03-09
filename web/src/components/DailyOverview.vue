@@ -12,7 +12,6 @@ const GIFT_ICONS: Record<string, string> = {
   daily_share: 'i-carbon-share',
   vip_daily_gift: 'i-carbon-star',
   month_card_gift: 'i-carbon-calendar',
-  open_server_gift: 'i-carbon-gift',
 }
 
 function getGiftIcon(key: string) {

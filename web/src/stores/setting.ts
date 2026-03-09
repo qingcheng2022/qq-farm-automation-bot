@@ -15,7 +15,6 @@ export interface AutomationConfig {
   friend_steal?: boolean
   friend_help?: boolean
   friend_bad?: boolean
-  open_server_gift?: boolean
 }
 
 export interface IntervalsConfig {

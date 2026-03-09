@@ -79,7 +79,6 @@ const events = [
   { label: '分享奖励', value: 'daily_share' },
   { label: '会员礼包', value: 'vip_daily_gift' },
   { label: '月卡礼包', value: 'month_card_gift' },
-  { label: '开服红包', value: 'open_server_gift' },
   { label: '图鉴奖励', value: 'illustrated_rewards' },
   { label: '邮箱领取', value: 'email_rewards' },
   { label: '出售成功', value: 'sell_success' },

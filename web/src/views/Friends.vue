@@ -14,8 +14,18 @@ const friendStore = useFriendStore()
 const statusStore = useStatusStore()
 const toast = useToastStore()
 const { currentAccountId, currentAccount } = storeToRefs(accountStore)
-const { friends, loading, friendLands, friendLandsLoading, blacklist } = storeToRefs(friendStore)
+const { friends, loading, friendLands, friendLandsLoading, blacklist, interactRecords, interactLoading, interactError } = storeToRefs(friendStore)
 const { status, loading: statusLoading, realtimeConnected } = storeToRefs(statusStore)
+
+const TABS = [
+  { key: 'friends', label: '好友列表', icon: 'i-carbon-user-multiple' },
+  { key: 'blacklist', label: '好友黑名单', icon: 'i-carbon-list-blocked' },
+  { key: 'visitors', label: '最近访客', icon: 'i-carbon-user-activity' },
+] as const
+
+type TabKey = typeof TABS[number]['key']
+
+const activeTab = ref<TabKey>('friends')
 
 const showConfirm = ref(false)
 const confirmMessage = ref('')
@@ -23,8 +33,15 @@ const confirmLoading = ref(false)
 const pendingAction = ref<(() => Promise<void>) | null>(null)
 const avatarErrorKeys = ref<Set<string>>(new Set())
 const searchKeyword = ref('')
-const showBlacklistModal = ref(false)
 const batchLoading = ref(false)
+
+const interactFilter = ref('all')
+const interactFilters = [
+  { key: 'all', label: '全部' },
+  { key: 'steal', label: '偷菜' },
+  { key: 'help', label: '帮忙' },
+  { key: 'bad', label: '捣乱' },
+]
 
 function confirmAction(msg: string, action: () => Promise<void>) {
   confirmMessage.value = msg
@@ -63,7 +80,22 @@ const filteredFriends = computed(() => {
   })
 })
 
-async function loadFriends() {
+const filteredInteractRecords = computed(() => {
+  if (interactFilter.value === 'all')
+    return interactRecords.value
+
+  const actionTypeMap: Record<string, number> = {
+    steal: 1,
+    help: 2,
+    bad: 3,
+  }
+  const targetActionType = actionTypeMap[interactFilter.value] || 0
+  return interactRecords.value.filter((record: any) => Number(record?.actionType) === targetActionType)
+})
+
+const visibleInteractRecords = computed(() => filteredInteractRecords.value.slice(0, 50))
+
+async function loadData() {
   if (currentAccountId.value) {
     const acc = currentAccount.value
     if (!acc)
@@ -77,6 +109,7 @@ async function loadFriends() {
       avatarErrorKeys.value.clear()
       friendStore.fetchFriends(currentAccountId.value)
       friendStore.fetchBlacklist(currentAccountId.value)
+      friendStore.fetchInteractRecords(currentAccountId.value)
     }
   }
 }
@@ -92,12 +125,12 @@ useIntervalFn(() => {
 }, 1000)
 
 onMounted(() => {
-  loadFriends()
+  loadData()
 })
 
 watch(currentAccountId, () => {
   expandedFriends.value.clear()
-  loadFriends()
+  loadData()
 })
 
 function toggleFriend(friendId: string) {
@@ -216,6 +249,91 @@ async function handleBatchOp(opType: 'help' | 'steal' | 'bad') {
 
   confirmAction(`确定执行${opNames[opType]}吗？`, action)
 }
+
+async function refreshInteractRecords() {
+  if (!currentAccountId.value)
+    return
+  await friendStore.fetchInteractRecords(currentAccountId.value)
+}
+
+function getInteractAvatar(record: any) {
+  return String(record?.avatarUrl || '').trim()
+}
+
+function getInteractAvatarKey(record: any) {
+  const key = String(record?.visitorGid || record?.key || record?.nick || '').trim()
+  return key ? `interact:${key}` : ''
+}
+
+function canShowInteractAvatar(record: any) {
+  const key = getInteractAvatarKey(record)
+  if (!key)
+    return false
+  return !!getInteractAvatar(record) && !avatarErrorKeys.value.has(key)
+}
+
+function handleInteractAvatarError(record: any) {
+  const key = getInteractAvatarKey(record)
+  if (!key)
+    return
+  avatarErrorKeys.value.add(key)
+}
+
+function getInteractBadgeClass(actionType: number) {
+  if (Number(actionType) === 1)
+    return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+  if (Number(actionType) === 2)
+    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+  if (Number(actionType) === 3)
+    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+  return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+}
+
+function formatInteractTime(timestamp: number) {
+  const ts = Number(timestamp) || 0
+  if (!ts)
+    return '--'
+
+  const date = new Date(ts)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const minute = 60 * 1000
+  const hour = 60 * minute
+
+  if (diff >= 0 && diff < minute)
+    return '刚刚'
+  if (diff >= minute && diff < hour)
+    return `${Math.floor(diff / minute)} 分钟前`
+
+  const sameDay = now.getFullYear() === date.getFullYear()
+      && now.getMonth() === date.getMonth()
+      && now.getDate() === date.getDate()
+
+  if (sameDay) {
+    return `今天 ${date.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })}`
+  }
+
+  if (now.getFullYear() === date.getFullYear()) {
+    return `${date.getMonth() + 1}-${date.getDate()} ${date.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })}`
+  }
+
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
 </script>
 
 <template>
@@ -226,14 +344,7 @@ async function handleBatchOp(opType: 'help' | 'steal' | 'bad') {
         好友
       </h2>
       <div class="flex items-center gap-3">
-        <button
-          class="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600 transition dark:bg-red-900/20 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30"
-          @click="showBlacklistModal = true"
-        >
-          <div class="i-carbon-list-blocked" />
-          好友黑名单 ({{ blacklist.length }})
-        </button>
-        <div class="relative">
+        <div v-if="activeTab === 'friends'" class="relative">
           <div class="i-carbon-search absolute left-3 top-1/2 text-gray-400 -translate-y-1/2" />
           <input
             v-model="searchKeyword"
@@ -242,13 +353,41 @@ async function handleBatchOp(opType: 'help' | 'steal' | 'bad') {
             class="w-full border border-gray-300 rounded-lg bg-white py-2 pl-10 pr-4 text-sm sm:w-64 dark:border-gray-600 focus:border-blue-500 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
         </div>
-        <div v-if="friends.length" class="text-sm text-gray-500">
+        <div v-if="activeTab === 'friends' && friends.length" class="text-sm text-gray-500">
           共 {{ filteredFriends.length }}/{{ friends.length }} 名好友
+        </div>
+        <div v-if="activeTab === 'blacklist'" class="text-sm text-gray-500">
+          共 {{ blacklist.length }} 人
+        </div>
+        <div v-if="activeTab === 'visitors' && interactRecords.length" class="text-sm text-gray-500">
+          共 {{ filteredInteractRecords.length }}/{{ interactRecords.length }} 条记录
         </div>
       </div>
     </div>
 
-    <div v-if="loading || statusLoading" class="flex justify-center py-12">
+    <div class="mb-4 flex border-b border-gray-200 dark:border-gray-700">
+      <button
+        v-for="tab in TABS"
+        :key="tab.key"
+        class="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors"
+        :class="activeTab === tab.key
+          ? 'border-b-2 text-blue-600 dark:text-blue-400'
+          : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
+        :style="{ borderColor: activeTab === tab.key ? 'var(--theme-primary)' : 'transparent', color: activeTab === tab.key ? 'var(--theme-primary)' : undefined }"
+        @click="activeTab = tab.key"
+      >
+        <div :class="tab.icon" />
+        {{ tab.label }}
+        <span
+          v-if="tab.key === 'blacklist' && blacklist.length > 0"
+          class="rounded-full bg-red-100 px-1.5 py-0.5 text-xs text-red-600 dark:bg-red-900/30 dark:text-red-400"
+        >
+          {{ blacklist.length }}
+        </span>
+      </button>
+    </div>
+
+    <div v-if="loading || statusLoading || interactLoading" class="flex justify-center py-12">
       <div class="i-svg-spinners-90-ring-with-bg text-4xl text-blue-500" />
     </div>
 
@@ -276,131 +415,259 @@ async function handleBatchOp(opType: 'help' | 'steal' | 'bad') {
       </div>
     </div>
 
-    <div v-else-if="friends.length === 0" class="rounded-lg bg-white p-8 text-center text-gray-500 shadow dark:bg-gray-800">
-      暂无好友或数据加载失败
-    </div>
+    <template v-else>
+      <div v-if="activeTab === 'friends'" class="space-y-4">
+        <div v-if="friends.length === 0" class="rounded-lg bg-white p-8 text-center text-gray-500 shadow dark:bg-gray-800">
+          暂无好友或数据加载失败
+        </div>
 
-    <div v-else class="space-y-4">
-      <div class="flex flex-wrap gap-2 rounded-lg bg-white p-3 shadow dark:bg-gray-800">
-        <span class="flex items-center text-sm text-gray-500 dark:text-gray-400">批量操作：</span>
-        <button
-          class="rounded bg-green-100 px-3 py-1.5 text-sm text-green-700 transition dark:bg-green-900/30 hover:bg-green-200 dark:text-green-400 disabled:opacity-50 dark:hover:bg-green-900/50"
-          :disabled="batchLoading"
-          @click="handleBatchOp('help')"
-        >
-          <div v-if="batchLoading" class="i-svg-spinners-90-ring-with-bg mr-1 inline-block align-text-bottom" />
-          一键帮助
-        </button>
-        <button
-          class="rounded bg-blue-100 px-3 py-1.5 text-sm text-blue-700 transition dark:bg-blue-900/30 hover:bg-blue-200 dark:text-blue-400 disabled:opacity-50 dark:hover:bg-blue-900/50"
-          :disabled="batchLoading"
-          @click="handleBatchOp('steal')"
-        >
-          <div v-if="batchLoading" class="i-svg-spinners-90-ring-with-bg mr-1 inline-block align-text-bottom" />
-          一键偷取
-        </button>
-        <button
-          class="rounded bg-red-100 px-3 py-1.5 text-sm text-red-700 transition dark:bg-red-900/30 hover:bg-red-200 dark:text-red-400 disabled:opacity-50 dark:hover:bg-red-900/50"
-          :disabled="batchLoading"
-          @click="handleBatchOp('bad')"
-        >
-          <div v-if="batchLoading" class="i-svg-spinners-90-ring-with-bg mr-1 inline-block align-text-bottom" />
-          一键捣乱
-        </button>
+        <template v-else>
+          <div class="flex flex-wrap gap-2 rounded-lg bg-white p-3 shadow dark:bg-gray-800">
+            <span class="flex items-center text-sm text-gray-500 dark:text-gray-400">批量操作：</span>
+            <button
+              class="rounded bg-green-100 px-3 py-1.5 text-sm text-green-700 transition dark:bg-green-900/30 hover:bg-green-200 dark:text-green-400 disabled:opacity-50 dark:hover:bg-green-900/50"
+              :disabled="batchLoading"
+              @click="handleBatchOp('help')"
+            >
+              <div v-if="batchLoading" class="i-svg-spinners-90-ring-with-bg mr-1 inline-block align-text-bottom" />
+              一键帮助
+            </button>
+            <button
+              class="rounded bg-blue-100 px-3 py-1.5 text-sm text-blue-700 transition dark:bg-blue-900/30 hover:bg-blue-200 dark:text-blue-400 disabled:opacity-50 dark:hover:bg-blue-900/50"
+              :disabled="batchLoading"
+              @click="handleBatchOp('steal')"
+            >
+              <div v-if="batchLoading" class="i-svg-spinners-90-ring-with-bg mr-1 inline-block align-text-bottom" />
+              一键偷取
+            </button>
+            <button
+              class="rounded bg-red-100 px-3 py-1.5 text-sm text-red-700 transition dark:bg-red-900/30 hover:bg-red-200 dark:text-red-400 disabled:opacity-50 dark:hover:bg-red-900/50"
+              :disabled="batchLoading"
+              @click="handleBatchOp('bad')"
+            >
+              <div v-if="batchLoading" class="i-svg-spinners-90-ring-with-bg mr-1 inline-block align-text-bottom" />
+              一键捣乱
+            </button>
+          </div>
+
+          <div
+            v-for="friend in filteredFriends"
+            :key="friend.gid"
+            class="overflow-hidden rounded-lg bg-white shadow dark:bg-gray-800"
+          >
+            <div
+              class="flex flex-col cursor-pointer justify-between gap-4 p-4 transition sm:flex-row sm:items-center hover:bg-gray-50 dark:hover:bg-gray-700/50"
+              :class="blacklist.includes(Number(friend.gid)) ? 'opacity-50' : ''"
+              @click="toggleFriend(friend.gid)"
+            >
+              <div class="flex items-center gap-3">
+                <div class="h-10 w-10 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 ring-1 ring-gray-100 dark:bg-gray-600 dark:ring-gray-700">
+                  <img
+                    v-if="canShowFriendAvatar(friend)"
+                    :src="getFriendAvatar(friend)"
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                    @error="handleFriendAvatarError(friend)"
+                  >
+                  <div v-else class="i-carbon-user text-gray-400" />
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 font-bold">
+                    {{ friend.name }} ({{ friend.gid }})
+                    <span v-if="blacklist.includes(Number(friend.gid))" class="rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">已屏蔽</span>
+                  </div>
+                  <div class="text-sm" :class="getFriendStatusText(friend) !== '无操作' ? 'text-green-500 font-medium' : 'text-gray-400'">
+                    {{ getFriendStatusText(friend) }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap gap-2">
+                <button
+                  class="rounded bg-blue-100 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-200"
+                  @click="handleOp(friend.gid, 'steal', $event)"
+                >
+                  偷取
+                </button>
+                <button
+                  class="rounded bg-cyan-100 px-3 py-2 text-sm text-cyan-700 transition hover:bg-cyan-200"
+                  @click="handleOp(friend.gid, 'water', $event)"
+                >
+                  浇水
+                </button>
+                <button
+                  class="rounded bg-green-100 px-3 py-2 text-sm text-green-700 transition hover:bg-green-200"
+                  @click="handleOp(friend.gid, 'weed', $event)"
+                >
+                  除草
+                </button>
+                <button
+                  class="rounded bg-orange-100 px-3 py-2 text-sm text-orange-700 transition hover:bg-orange-200"
+                  @click="handleOp(friend.gid, 'bug', $event)"
+                >
+                  除虫
+                </button>
+                <button
+                  class="rounded bg-red-100 px-3 py-2 text-sm text-red-700 transition hover:bg-red-200"
+                  @click="handleOp(friend.gid, 'bad', $event)"
+                >
+                  捣乱
+                </button>
+                <button
+                  class="rounded px-3 py-2 text-sm transition"
+                  :class="blacklist.includes(Number(friend.gid))
+                    ? 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700/50 dark:text-gray-400 dark:hover:bg-gray-700'"
+                  @click="handleToggleBlacklist(friend, $event)"
+                >
+                  {{ blacklist.includes(Number(friend.gid)) ? '移出黑名单' : '加入黑名单' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-if="expandedFriends.has(friend.gid)" class="border-t bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/50">
+              <div v-if="friendLandsLoading[friend.gid]" class="flex justify-center py-4">
+                <div class="i-svg-spinners-90-ring-with-bg text-2xl text-blue-500" />
+              </div>
+              <div v-else-if="!friendLands[friend.gid] || friendLands[friend.gid]?.length === 0" class="py-4 text-center text-gray-500">
+                无土地数据
+              </div>
+              <div v-else class="grid grid-cols-2 gap-2 lg:grid-cols-8 md:grid-cols-5 sm:grid-cols-4">
+                <LandCard
+                  v-for="land in friendLands[friend.gid]"
+                  :key="land.id"
+                  :land="land"
+                />
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
 
-      <div
-        v-for="friend in filteredFriends"
-        :key="friend.gid"
-        class="overflow-hidden rounded-lg bg-white shadow dark:bg-gray-800"
-      >
-        <div
-          class="flex flex-col cursor-pointer justify-between gap-4 p-4 transition sm:flex-row sm:items-center hover:bg-gray-50 dark:hover:bg-gray-700/50"
-          :class="blacklist.includes(Number(friend.gid)) ? 'opacity-50' : ''"
-          @click="toggleFriend(friend.gid)"
-        >
-          <div class="flex items-center gap-3">
-            <div class="h-10 w-10 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 ring-1 ring-gray-100 dark:bg-gray-600 dark:ring-gray-700">
+      <div v-else-if="activeTab === 'blacklist'" class="space-y-4">
+        <div class="rounded-lg bg-white p-4 shadow dark:bg-gray-800">
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            加入黑名单的好友在自动偷菜和帮助时会被跳过。
+          </p>
+        </div>
+
+        <div v-if="blacklist.length === 0" class="rounded-lg bg-white p-8 text-center text-gray-500 shadow dark:bg-gray-800">
+          <div class="i-carbon-list-blocked mx-auto mb-3 text-4xl text-gray-300" />
+          暂无黑名单好友
+        </div>
+
+        <div v-else class="space-y-2">
+          <div
+            v-for="gid in blacklist"
+            :key="gid"
+            class="flex items-center justify-between rounded-lg bg-white p-4 shadow dark:bg-gray-800"
+          >
+            <div class="flex items-center gap-3">
+              <div class="h-10 w-10 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 ring-1 ring-gray-100 dark:bg-gray-600 dark:ring-gray-700">
+                <img
+                  v-if="canShowFriendAvatar(friends.find((f: any) => Number(f.gid) === gid))"
+                  :src="getFriendAvatar(friends.find((f: any) => Number(f.gid) === gid))"
+                  class="h-full w-full object-cover"
+                  loading="lazy"
+                  @error="handleFriendAvatarError(friends.find((f: any) => Number(f.gid) === gid))"
+                >
+                <div v-else class="i-carbon-user text-gray-400" />
+              </div>
+              <div>
+                <span class="font-medium">{{ getFriendNameByGid(gid) }}</span>
+                <span class="ml-2 text-sm text-gray-400">({{ gid }})</span>
+              </div>
+            </div>
+            <button
+              class="rounded bg-red-100 px-3 py-1.5 text-sm text-red-600 dark:bg-red-900/30 hover:bg-red-200 dark:text-red-400 dark:hover:bg-red-900/50"
+              @click="handleRemoveFromBlacklist(gid)"
+            >
+              移出黑名单
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="activeTab === 'visitors'" class="space-y-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            v-for="item in interactFilters"
+            :key="item.key"
+            class="rounded-full px-3 py-1 text-xs transition"
+            :class="interactFilter === item.key
+              ? 'bg-blue-500 text-white'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
+            @click="interactFilter = item.key"
+          >
+            {{ item.label }}
+          </button>
+          <button
+            class="rounded bg-gray-100 px-3 py-1.5 text-xs text-gray-600 transition dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="interactLoading"
+            @click="refreshInteractRecords"
+          >
+            {{ interactLoading ? '刷新中...' : '刷新' }}
+          </button>
+        </div>
+
+        <div v-if="!!interactError" class="rounded-lg bg-red-50 px-4 py-6 text-center text-sm text-red-600 dark:bg-red-900/20 dark:text-red-300">
+          {{ interactError }}
+        </div>
+
+        <div v-else-if="visibleInteractRecords.length === 0" class="rounded-lg bg-white p-8 text-center text-gray-500 shadow dark:bg-gray-800">
+          <div class="i-carbon-user-activity mx-auto mb-3 text-4xl text-gray-300" />
+          暂无访客记录
+        </div>
+
+        <div v-else class="space-y-3">
+          <div
+            v-for="record in visibleInteractRecords"
+            :key="record.key"
+            class="flex items-start gap-3 rounded-lg bg-white p-4 shadow dark:bg-gray-800"
+          >
+            <div class="h-12 w-12 flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-200 ring-1 ring-gray-100 dark:bg-gray-700 dark:ring-gray-600">
               <img
-                v-if="canShowFriendAvatar(friend)"
-                :src="getFriendAvatar(friend)"
+                v-if="canShowInteractAvatar(record)"
+                :src="getInteractAvatar(record)"
                 class="h-full w-full object-cover"
                 loading="lazy"
-                @error="handleFriendAvatarError(friend)"
+                @error="handleInteractAvatarError(record)"
               >
-              <div v-else class="i-carbon-user text-gray-400" />
+              <div v-else class="i-carbon-user-avatar text-gray-400 text-xl" />
             </div>
-            <div>
-              <div class="flex items-center gap-2 font-bold">
-                {{ friend.name }} ({{ friend.gid }})
-                <span v-if="blacklist.includes(Number(friend.gid))" class="rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">已屏蔽</span>
+            <div class="min-w-0 flex-1">
+              <div class="mb-1 flex flex-wrap items-center gap-2">
+                <span class="max-w-full truncate text-base text-gray-800 font-medium dark:text-gray-100">
+                  {{ record.nick || `GID:${record.visitorGid}` }}
+                </span>
+                <span
+                  class="rounded-full px-2 py-0.5 text-xs font-medium"
+                  :class="getInteractBadgeClass(record.actionType)"
+                >
+                  {{ record.actionLabel }}
+                </span>
+                <span v-if="record.level" class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+                  Lv.{{ record.level }}
+                </span>
+                <span v-if="record.visitorGid" class="text-xs text-gray-400">
+                  GID {{ record.visitorGid }}
+                </span>
               </div>
-              <div class="text-sm" :class="getFriendStatusText(friend) !== '无操作' ? 'text-green-500 font-medium' : 'text-gray-400'">
-                {{ getFriendStatusText(friend) }}
+              <div class="text-sm text-gray-600 dark:text-gray-300">
+                {{ record.actionDetail || record.actionLabel }}
               </div>
+            </div>
+            <div class="shrink-0 text-right text-xs text-gray-400">
+              {{ formatInteractTime(record.serverTimeMs) }}
             </div>
           </div>
 
-          <div class="flex flex-wrap gap-2">
-            <button
-              class="rounded bg-blue-100 px-3 py-2 text-sm text-blue-700 transition hover:bg-blue-200"
-              @click="handleOp(friend.gid, 'steal', $event)"
-            >
-              偷取
-            </button>
-            <button
-              class="rounded bg-cyan-100 px-3 py-2 text-sm text-cyan-700 transition hover:bg-cyan-200"
-              @click="handleOp(friend.gid, 'water', $event)"
-            >
-              浇水
-            </button>
-            <button
-              class="rounded bg-green-100 px-3 py-2 text-sm text-green-700 transition hover:bg-green-200"
-              @click="handleOp(friend.gid, 'weed', $event)"
-            >
-              除草
-            </button>
-            <button
-              class="rounded bg-orange-100 px-3 py-2 text-sm text-orange-700 transition hover:bg-orange-200"
-              @click="handleOp(friend.gid, 'bug', $event)"
-            >
-              除虫
-            </button>
-            <button
-              class="rounded bg-red-100 px-3 py-2 text-sm text-red-700 transition hover:bg-red-200"
-              @click="handleOp(friend.gid, 'bad', $event)"
-            >
-              捣乱
-            </button>
-            <button
-              class="rounded px-3 py-2 text-sm transition"
-              :class="blacklist.includes(Number(friend.gid))
-                ? 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700/50 dark:text-gray-400 dark:hover:bg-gray-700'"
-              @click="handleToggleBlacklist(friend, $event)"
-            >
-              {{ blacklist.includes(Number(friend.gid)) ? '移出黑名单' : '加入黑名单' }}
-            </button>
-          </div>
-        </div>
-
-        <div v-if="expandedFriends.has(friend.gid)" class="border-t bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/50">
-          <div v-if="friendLandsLoading[friend.gid]" class="flex justify-center py-4">
-            <div class="i-svg-spinners-90-ring-with-bg text-2xl text-blue-500" />
-          </div>
-          <div v-else-if="!friendLands[friend.gid] || friendLands[friend.gid]?.length === 0" class="py-4 text-center text-gray-500">
-            无土地数据
-          </div>
-          <div v-else class="grid grid-cols-2 gap-2 lg:grid-cols-8 md:grid-cols-5 sm:grid-cols-4">
-            <LandCard
-              v-for="land in friendLands[friend.gid]"
-              :key="land.id"
-              :land="land"
-            />
+          <div v-if="filteredInteractRecords.length > visibleInteractRecords.length" class="text-center text-xs text-gray-400">
+            仅展示最近 {{ visibleInteractRecords.length }} 条
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <ConfirmModal
       :show="showConfirm"
@@ -410,49 +677,5 @@ async function handleBatchOp(opType: 'help' | 'steal' | 'bad') {
       @confirm="onConfirm"
       @cancel="!confirmLoading && (showConfirm = false)"
     />
-
-    <div
-      v-if="showBlacklistModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
-      @click.self="showBlacklistModal = false"
-    >
-      <div class="max-w-md w-full rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
-        <h3 class="mb-4 text-lg text-gray-900 font-bold dark:text-white">
-          好友黑名单管理
-        </h3>
-        <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">
-          加入黑名单的好友在自动偷菜和帮助时会被跳过。
-        </p>
-        <div v-if="blacklist.length === 0" class="py-4 text-center text-gray-500 dark:text-gray-400">
-          暂无黑名单好友
-        </div>
-        <div v-else class="max-h-64 overflow-y-auto space-y-2">
-          <div
-            v-for="gid in blacklist"
-            :key="gid"
-            class="flex items-center justify-between rounded-lg bg-gray-50 p-3 dark:bg-gray-700"
-          >
-            <div class="flex items-center gap-2">
-              <span class="font-medium">{{ getFriendNameByGid(gid) }}</span>
-              <span class="text-sm text-gray-400">({{ gid }})</span>
-            </div>
-            <button
-              class="rounded bg-red-100 px-2 py-1 text-xs text-red-600 dark:bg-red-900/30 hover:bg-red-200 dark:text-red-400 dark:hover:bg-red-900/50"
-              @click="handleRemoveFromBlacklist(gid)"
-            >
-              移出
-            </button>
-          </div>
-        </div>
-        <div class="mt-6 flex justify-end">
-          <button
-            class="rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700 dark:bg-gray-700 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-600"
-            @click="showBlacklistModal = false"
-          >
-            关闭
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>

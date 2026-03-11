@@ -86,7 +86,7 @@ export const useSettingStore = defineStore('setting', () => {
     stealDelaySeconds: 0,
     plantOrderRandom: false,
     plantDelaySeconds: 0,
-    fertilizerBuyType: 'inorganic',
+    fertilizerBuyType: 'normal',
     fertilizerBuyCount: 10,
   })
   const loading = ref(false)

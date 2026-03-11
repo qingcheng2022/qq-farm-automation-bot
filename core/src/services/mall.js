@@ -99,7 +99,7 @@ function findInorganicFertilizerMallGoods(goodsList) {
 }
 
 function findFertilizerMallGoods(goodsList, type = 'organic') {
-    if (type === 'inorganic') {
+    if (type === 'normal') {
         return findInorganicFertilizerMallGoods(goodsList);
     }
     return findOrganicFertilizerMallGoods(goodsList);
@@ -135,6 +135,12 @@ async function autoBuyOrganicFertilizerViaMall() {
             await sleep(120);
         } catch (e) {
             const msg = String((e && e.message) || '');
+            log('商城', `购买化肥失败: ${msg}`, {
+                module: 'warehouse',
+                event: '购买化肥',
+                result: 'error',
+                error: msg,
+            });
             if (msg.includes('余额不足') || msg.includes('点券不足') || msg.includes('code=1000019')) {
                 if (perRound > 1) {
                     perRound = 1;
@@ -145,13 +151,40 @@ async function autoBuyOrganicFertilizerViaMall() {
             break;
         }
     }
+    
+    if (totalBought > 0) {
+        log('商城', `购买化肥成功，共购买 ${totalBought} 个`, {
+            module: 'warehouse',
+            event: '购买化肥',
+            result: 'ok',
+            count: totalBought,
+            type,
+        });
+    }
+    
     return totalBought;
 }
 
 async function autoBuyFertilizerViaMall(type = 'organic', targetCount = 0) {
+    log('商城', `开始购买化肥, 类型: ${type === 'normal' ? '无机化肥' : '有机化肥'}, 数量: ${targetCount || '不限'}`, {
+        module: 'warehouse',
+        event: '购买化肥',
+        type,
+        targetCount,
+    });
+    
     const goodsList = await getMallGoodsList(1);
     const goods = findFertilizerMallGoods(goodsList, type);
-    if (!goods) return 0;
+    if (!goods) {
+        log('商城', `未找到化肥商品`, {
+            module: 'warehouse',
+            event: '购买化肥',
+            result: 'error',
+            type,
+            error: '商品不存在',
+        });
+        return 0;
+    }
 
     const goodsId = toNum(goods.goods_id);
     if (goodsId <= 0) return 0;
@@ -162,6 +195,15 @@ async function autoBuyFertilizerViaMall(type = 'organic', targetCount = 0) {
     if (singlePrice > 0 && ticket > 0) {
         perRound = Math.max(1, Math.min(BUY_PER_ROUND, Math.floor(ticket / singlePrice) || 1));
     }
+
+    log('商城', `准备购买化肥: goodsId=${goodsId}, 单价=${singlePrice}, 点券=${ticket}, 每轮购买=${perRound}`, {
+        module: 'warehouse',
+        event: '购买化肥',
+        goodsId,
+        singlePrice,
+        ticket,
+        perRound,
+    });
 
     const remainingToBuy = targetCount > 0 ? targetCount : Infinity;
 
@@ -182,6 +224,13 @@ async function autoBuyFertilizerViaMall(type = 'organic', targetCount = 0) {
             await sleep(120);
         } catch (e) {
             const msg = String((e && e.message) || '');
+            log('商城', `购买化肥失败: ${msg}`, {
+                module: 'warehouse',
+                event: '购买化肥',
+                result: 'error',
+                error: msg,
+                type,
+            });
             if (msg.includes('余额不足') || msg.includes('点券不足') || msg.includes('code=1000019')) {
                 if (perRound > 1) {
                     perRound = 1;
@@ -192,6 +241,17 @@ async function autoBuyFertilizerViaMall(type = 'organic', targetCount = 0) {
             break;
         }
     }
+    
+    if (totalBought > 0) {
+        log('商城', `购买化肥成功，共购买 ${totalBought} 个`, {
+            module: 'warehouse',
+            event: '购买化肥',
+            result: 'ok',
+            count: totalBought,
+            type,
+        });
+    }
+    
     return totalBought;
 }
 
@@ -228,7 +288,7 @@ async function autoBuyFertilizer(force = false, type = 'organic', targetCount = 
         if (totalBought > 0) {
             buyDoneDateKey = getDateKey();
             buyLastSuccessAt = Date.now();
-            const typeName = type === 'inorganic' ? '无机化肥' : '有机化肥';
+            const typeName = type === 'normal' ? '无机化肥' : '有机化肥';
             log('商城', `自动购买${typeName} x${totalBought}`, {
                 module: 'warehouse',
                 event: '购买化肥',

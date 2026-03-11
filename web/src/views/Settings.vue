@@ -227,7 +227,7 @@ const fertilizerOptions = [
 
 const fertilizerBuyTypeOptions = [
   { label: '有机化肥', value: 'organic' },
-  { label: '无机化肥', value: 'inorganic' },
+  { label: '无机化肥', value: 'normal' },
 ]
 
 const plantingStrategyOptions = [
@@ -371,6 +371,25 @@ async function saveAccountSettings() {
     const res = await settingStore.saveSettings(currentAccountId.value, localSettings.value)
     if (res.ok) {
       showAlert('账号设置已保存')
+
+      if (localSettings.value.automation?.fertilizer_buy) {
+        try {
+          const fertilizerType = localSettings.value.fertilizerBuyType || 'organic'
+          const fertilizerCount = localSettings.value.fertilizerBuyCount || 0
+          await api.post('/api/fertilizer/buy', {
+            type: fertilizerType,
+            count: fertilizerCount,
+          }, {
+            headers: { 'x-account-id': currentAccountId.value },
+          })
+          
+          localSettings.value.automation.fertilizer_buy = false
+          await settingStore.saveSettings(currentAccountId.value, localSettings.value)
+        }
+        catch (e) {
+          console.error('购买化肥失败', e)
+        }
+      }
     }
     else {
       showAlert(`保存失败: ${res.error}`, 'danger')

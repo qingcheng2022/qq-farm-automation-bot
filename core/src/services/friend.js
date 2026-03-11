@@ -469,10 +469,14 @@ function analyzeFriendLands(lands, myGid, friendName = '', options = {}) {
  */
 async function getFriendsList() {
     try {
+        log('好友', '开始获取好友列表', {
+            module: 'friend',
+            event: '获取好友列表',
+        });
         const reply = await getAllFriends();
         const friends = reply.game_friends || [];
         const state = getUserState();
-        return friends
+        const result = friends
             .filter(f => toNum(f.gid) !== state.gid && f.name !== '小小农夫' && f.remark !== '小小农夫')
             .map(f => ({
                 gid: toNum(f.gid),
@@ -493,7 +497,20 @@ async function getFriendsList() {
                 if (byName !== 0) return byName;
                 return Number(a.gid || 0) - Number(b.gid || 0);
             });
-    } catch {
+        log('好友', `获取好友列表成功，共 ${result.length} 位好友`, {
+            module: 'friend',
+            event: '获取好友列表',
+            result: 'ok',
+            count: result.length,
+        });
+        return result;
+    } catch (e) {
+        log('好友', `获取好友列表失败: ${e.message}`, {
+            module: 'friend',
+            event: '获取好友列表',
+            result: 'error',
+            error: e.message,
+        });
         return [];
     }
 }

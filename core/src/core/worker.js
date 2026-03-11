@@ -225,11 +225,6 @@ async function runFarmTick(auto) {
         if (auto.task) await checkAndClaimTasks();
         if (auto.email) await checkAndClaimEmails();
         if (auto.fertilizer_gift) await openFertilizerGiftPacksSilently();
-        if (auto.fertilizer_buy) {
-            const fertilizerType = getFertilizerBuyType();
-            const fertilizerCount = getFertilizerBuyCount();
-            await autoBuyFertilizer(false, fertilizerType, fertilizerCount);
-        }
     } catch {
         // ignore
     } finally {
@@ -653,6 +648,12 @@ async function handleApiCall(msg) {
             case 'doFarmOp':
                 result = await runFarmOperation(args[0]); // opType
                 break;
+            case 'buyFertilizer': {
+                const fertilizerType = args[0] || 'organic';
+                const fertilizerCount = Number(args[1]) || 0;
+                result = await autoBuyFertilizer(true, fertilizerType, fertilizerCount);
+                break;
+            }
             case 'getAnalytics': {
                 const { getPlantRankings } = require('../services/analytics');
                 result = getPlantRankings(args[0]); // sortBy

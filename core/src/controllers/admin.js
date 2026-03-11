@@ -556,6 +556,26 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    app.post('/api/fertilizer/buy', async (req, res) => {
+        const id = getAccId(req);
+        if (!id) {
+            return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+        }
+
+        if (!checkAccountAccess(req, id)) {
+            return res.status(403).json({ ok: false, error: '无权访问此账号' });
+        }
+
+        try {
+            const type = String(req.body?.type || 'organic');
+            const count = Number(req.body?.count) || 0;
+            const bought = await provider.buyFertilizer(id, type, count);
+            res.json({ ok: true, bought });
+        } catch (e) {
+            res.status(500).json({ ok: false, error: e.message });
+        }
+    });
+
     // API: 农田详情
     app.get('/api/lands', async (req, res) => {
         const id = getAccId(req);

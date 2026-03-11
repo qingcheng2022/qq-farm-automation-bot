@@ -117,6 +117,7 @@ function createDataProvider(options) {
 
         doFarmOp: (accountRef, opType) => callWorkerApi(resolveAccountRefId(accountRef), 'doFarmOp', opType),
         doAnalytics: (accountRef, sortBy) => callWorkerApi(resolveAccountRefId(accountRef), 'getAnalytics', sortBy),
+        buyFertilizer: (accountRef, type, count) => callWorkerApi(resolveAccountRefId(accountRef), 'buyFertilizer', type, count),
         saveSettings: async (accountRef, payload) => {
             const accountId = resolveAccountRefId(accountRef);
             if (!accountId) {

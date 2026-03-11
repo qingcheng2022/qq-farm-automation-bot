@@ -89,8 +89,8 @@ const DEFAULT_ACCOUNT_CONFIG = {
     plantOrderRandom: true,
     // 自己农田种植时每块地间隔秒数（0=使用默认50ms）
     plantDelaySeconds: 2,
-    // 化肥购买类型：organic（有机）或 inorganic（无机）
-    fertilizerBuyType: 'inorganic',
+    // 化肥购买类型：organic（有机）或 normal（无机）
+    fertilizerBuyType: 'normal',
     // 化肥购买数量（0=不限制，购买到点券不足为止）
     fertilizerBuyCount: 10,
 };
@@ -198,6 +198,12 @@ function cloneAccountConfig(base = DEFAULT_ACCOUNT_CONFIG) {
     // 蔬菜黑名单
     const rawPlantBlacklist = Array.isArray(base.plantBlacklist) ? base.plantBlacklist : [];
 
+    // 化肥购买类型
+    const allowedBuyTypes = ['organic', 'normal'];
+    const fertilizerBuyType = allowedBuyTypes.includes(base.fertilizerBuyType)
+        ? base.fertilizerBuyType
+        : DEFAULT_ACCOUNT_CONFIG.fertilizerBuyType;
+
     return {
         ...base,
         automation,
@@ -212,6 +218,8 @@ function cloneAccountConfig(base = DEFAULT_ACCOUNT_CONFIG) {
         stealDelaySeconds: Math.max(0, Math.min(300, Number(base.stealDelaySeconds) || 0)),
         plantOrderRandom: !!(base.plantOrderRandom),
         plantDelaySeconds: Math.max(0, Math.min(60, Number(base.plantDelaySeconds) || 0)),
+        fertilizerBuyType,
+        fertilizerBuyCount: Math.max(0, Math.min(10000, Number(base.fertilizerBuyCount) || 0)),
     };
 }
 
@@ -295,7 +303,7 @@ function normalizeAccountConfig(input, fallback = accountFallbackConfig) {
 
     // 化肥购买类型
     if (src.fertilizerBuyType !== undefined && src.fertilizerBuyType !== null) {
-        const allowedTypes = ['organic', 'inorganic'];
+        const allowedTypes = ['organic', 'normal'];
         cfg.fertilizerBuyType = allowedTypes.includes(src.fertilizerBuyType) ? src.fertilizerBuyType : 'organic';
     }
 
@@ -577,7 +585,7 @@ function applyConfigSnapshot(snapshot, options = {}) {
 
     // 化肥购买类型
     if (cfg.fertilizerBuyType !== undefined && cfg.fertilizerBuyType !== null) {
-        const allowedTypes = ['organic', 'inorganic'];
+        const allowedTypes = ['organic', 'normal'];
         next.fertilizerBuyType = allowedTypes.includes(cfg.fertilizerBuyType) ? cfg.fertilizerBuyType : 'organic';
     }
 
@@ -691,7 +699,7 @@ function getPlantDelaySeconds(accountId) {
 // ============ 化肥购买类型 ============
 function getFertilizerBuyType(accountId) {
     const cfg = getAccountConfigSnapshot(accountId);
-    const allowedTypes = ['organic', 'inorganic'];
+    const allowedTypes = ['organic', 'normal'];
     return allowedTypes.includes(cfg.fertilizerBuyType) ? cfg.fertilizerBuyType : 'organic';
 }
 

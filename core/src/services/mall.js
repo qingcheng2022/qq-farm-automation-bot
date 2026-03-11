@@ -1,7 +1,6 @@
 const { Buffer } = require('node:buffer');
 /**
  * 商城自动购买
- * 当前实现：自动购买有机化肥（item_id=1012）
  */
 
 const { sendMsgAsync, getUserState } = require('../utils/network');
@@ -9,7 +8,7 @@ const { types } = require('../utils/proto');
 const { toNum, log, sleep } = require('../utils/utils');
 
 const ORGANIC_FERTILIZER_MALL_GOODS_ID = 1002;
-const INORGANIC_FERTILIZER_MALL_GOODS_ID = 1001;
+const INORGANIC_FERTILIZER_MALL_GOODS_ID = 1003;
 const BUY_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_ROUNDS = 100;
 const BUY_PER_ROUND = 10;
